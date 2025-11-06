@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="libraryName" th:content="${libraryName}">
+    <meta name="libraryAddress" th:content="${libraryAddress}">
+    <meta name="libraryLat" th:content="${libraryLat}">
+    <meta name="libraryLon" th:content="${libraryLon}">
+
+    <meta name="_csrf" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:content="${_csrf.headerName}"/>
+
+    <title th:text="|${libraryName} - 상세 정보|">도서관 상세 정보</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+
+    <script type="text/javascript"
+            src="//dapi.kakao.com/v2/maps/sdk.js?appkey=[[${kakaoMapAppKey}]]"></script>
+</head>
+<body>
+<div th:replace="~{fragments/header :: header}"></div>
+<div class="container">
+    <h1 th:text="${libraryName}">도서관 이름</h1>
+    <p th:text="|주소: ${libraryAddress}|">주소</p>
+
+    <div id="map" style="height: 300px;"></div>
+    <hr>
+
+    <div class="tip-form" sec:authorize="isAuthenticated()">
+        <h4>한 줄 팁 작성하기</h4>
+        <form id="tipCreateForm" onsubmit="createTip(event)">
+            <textarea id="tipContent" placeholder="도서관 이용 팁을 5자 이상 500자 이하로 남겨주세요." required minlength="5"
+                      maxlength="500"></textarea>
+            <button type="submit">등록</button>
+        </form>
+        <div id="tipError" class="error"></div>
+    </div>
+
+    <div sec:authorize="isAnonymous()">
+        <p>한 줄 팁을 작성하려면 <a th:href="@{/members/login}">로그인</a>이 필요합니다.</p>
+    </div>
+
+    <hr>
+
+    <h3>한 줄 팁 목록</h3>
+    <ul id="tipList" class="tip-list">
+    </ul>
+</div>
+
+<script>
+    // (공통) CSRF 토큰과 헤더 이름
+    const csrfToken = document.querySelector('meta[name="_csrf"]').content;
+    const csrfHeader = document.querySelector('meta[name="_csrf_header"]').content;
+
+    // (공통) 도서관 식별자 (주소, 이름)
+    const libraryAddress = document.querySelector('meta[name="libraryAddress"]').content;
+    const libraryName = document.querySelector('meta[name="libraryName"]').content;
+
+    /**
+     * [추가] (GET) 상세 지도 로드 함수
+     */
+    function loadDetailMap() {
+        const lat = document.querySelector('meta[name="libraryLat"]').content;
+        const lon = document.querySelector('meta[name="libraryLon"]').content;
+
+        if (!lat || !lon || lat.trim() === "" || lon.trim() === "") {
+            return;
+        }
+        const mapContainer = document.getElementById('map');
+        const position = new kakao.maps.LatLng(lat, lon);
+        const mapOption = {
+            center: position,
+            level: 3
+        };
+        const map = new kakao.maps.Map(mapContainer, mapOption);
+        const marker = new kakao.maps.Marker({
+            position: position,
+            title: libraryName
+        });
+        marker.setMap(map);
+    }
+
+    /**
+     * (GET) 페이지 로드 시 팁 목록 조회 함수
+     */
+    function getTips() {
+        const url = `/api/tips?libraryAddress=${encodeURIComponent(libraryAddress)}`;
+        const tipListUl = document.getElementById('tipList');
+
+        // [수정] GET 요청에도 CSRF 헤더(인증용)를 포함
+        fetch(url, {
+            method: 'GET',
+            headers: {
+                [csrfHeader]: csrfToken
+            }
+        })
+            .then(response => response.json())
+            .then(tips => {
+                tipListUl.innerHTML = '';
+
+                if (tips.length === 0) {
+                    tipListUl.innerHTML = '<li>등록된 팁이 없습니다.</li>';
+                    return;
+                }
+
+                tips.forEach(tip => {
+
+                    const li = document.createElement('li');
+                    li.className = 'tip-item';
+                    li.id = `tip-${tip.tipId}`;
+
+                    const date = new Date(tip.createdAt).toLocaleString();
+
+                    let html = `
+                            <p class="tip-author">${tip.authorNickname}</p>
+                            <p class="tip-date">${date}</p>
+                            <p class="tip-content">${tip.content}</p>
+                        `;
+
+                    if (tip.owner) {
+                        html += `
+                                <button class="btn-update" onclick="showUpdateForm(${tip.tipId})">수정</button>
+                                <button class="btn-delete" onclick="deleteTip(${tip.tipId})">삭제</button>
+                            `;
+                    }
+
+                    li.innerHTML = html;
+                    tipListUl.appendChild(li);
+                });
+            })
+            .catch(error => {
+                tipListUl.innerHTML = '<li>팁을 불러오는 중 오류가 발생했습니다.</li>';
+            });
+    }
+
+    /**
+     * (POST) 팁 작성 폼 제출 함수
+     */
+    function createTip(event) {
+        event.preventDefault();
+        const content = document.getElementById('tipContent').value;
+        const errorDiv = document.getElementById('tipError');
+        errorDiv.innerText = '';
+
+        const tipDto = {
+            libraryAddress: libraryAddress,
+            libraryName: libraryName,
+            content: content
+        };
+
+        fetch('/api/tips', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', [csrfHeader]: csrfToken},
+            body: JSON.stringify(tipDto)
+        })
+            .then(response => {
+                if (response.ok) {
+                    alert('팁 등록 성공!');
+                    document.getElementById('tipContent').value = '';
+                    getTips(); // 팁 목록 새로고침
+                } else {
+                    return response.text().then(text => Promise.reject(text));
+                }
+            })
+            .catch(errorText => {
+                errorDiv.innerText = errorText;
+            });
+    }
+
+    /**
+     * (DELETE) 팁 삭제 함수
+     */
+    function deleteTip(tipId) {
+        if (!confirm('정말로 이 팁을 삭제하시겠습니까?')) {
+            return;
+        }
+
+        const url = `/api/tips/${tipId}`;
+
+        fetch(url, {
+            method: 'DELETE',
+            headers: {
+                [csrfHeader]: csrfToken
+            }
+        })
+            .then(response => {
+                if (response.ok) {
+                    alert('팁 삭제 성공!');
+                    getTips(); // 팁 목록 새로고침
+                } else {
+                    return response.text().then(text => Promise.reject(text));
+                }
+            })
+            .catch(errorText => {
+                alert('삭제 실패: ' + errorText);
+            });
+    }
+
+    /**
+     * (PUT) 팁 수정 함수
+     */
+    function showUpdateForm(tipId) {
+        const tipElement = document.getElementById(`tip-${tipId}`);
+        const oldContent = tipElement.querySelector('.tip-content').innerText;
+        const newContent = prompt('수정할 내용을 입력하세요 (5자 이상):', oldContent);
+
+        if (newContent === null) {
+            return;
+        }
+        if (newContent.trim().length < 5) {
+            alert('팁은 5자 이상이어야 합니다.');
+            return;
+        }
+
+        const updateDto = {content: newContent};
+        const url = `/api/tips/${tipId}`;
+
+        fetch(url, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                [csrfHeader]: csrfToken
+            },
+            body: JSON.stringify(updateDto)
+        })
+            .then(response => {
+                if (response.ok) {
+                    alert('팁 수정 성공!');
+                    getTips(); // 팁 목록 새로고침
+                } else {
+                    return response.text().then(text => Promise.reject(text));
+                }
+            })
+            .catch(errorText => {
+                alert('수정 실패: ' + errorText);
+            });
+    }
+
+
+    // --- 페이지 로드 시 팁 목록 자동 조회 실행 ---
+    document.addEventListener('DOMContentLoaded', function () {
+        getTips();         // 1. 팁 목록 로드
+        loadDetailMap();   // 2. [추가] 상세 지도 로드
+    });
+
+</script>
+</body>
+</html>

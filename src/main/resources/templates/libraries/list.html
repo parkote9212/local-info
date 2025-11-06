@@ -1,0 +1,187 @@
+<<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <title>경기도 도서관 목록</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+
+    <script type="text/javascript"
+            src="//dapi.kakao.com/v2/maps/sdk.js?appkey=[[${kakaoMapAppKey}]]"></script>
+    <meta name="_csrf" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:content="${_csrf.headerName}"/>
+</head>
+<body>
+<div th:replace="~{fragments/header :: header}"></div>
+<div class="container">
+    <h1>경기도 도서관 목록</h1>
+    <div id="map"></div>
+
+    <table>
+        <thead>
+        <tr>
+            <th>시군명</th>
+            <th>도서관명</th>
+            <th>주소</th>
+            <th>홈페이지</th>
+            <th sec:authorize="isAuthenticated()">찜하기</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="lib : ${libraries}">
+            <td th:text="${lib.sigunName}">시군명</td>
+
+            <td>
+                <a th:href="@{/libraries/detail(
+                                address=${lib.address},
+                                name=${lib.libraryName},
+                                lat=${lib.latitude},
+                                lon=${lib.longitude}
+                             )}"
+                   th:text="${lib.libraryName}">
+                    도서관명
+                </a>
+            </td>
+
+            <td th:text="${lib.address}">주소</td>
+
+            <td>
+                <a th:if="${lib.homepageUrl != null && !lib.homepageUrl.isEmpty()}"
+                   th:href="'//'+${lib.homepageUrl}" th:text="${lib.homepageUrl}" target="_blank">홈페이지</a>
+                <span th:unless="${lib.homepageUrl != null && !lib.homepageUrl.isEmpty()}">N/A</span>
+            </td>
+
+            <td sec:authorize="isAuthenticated()">
+                <button type="button" class="bookmark-btn"
+                        th:data-name="${lib.libraryName}"
+                        th:data-sigun="${lib.sigunName}"
+                        th:data-address="${lib.address}"
+                        th:data-lat="${lib.latitude}"
+                        th:data-lon="${lib.longitude}"
+                        th:data-homepage="${lib.homepageUrl}"
+                        onclick="addBookmark(this)">
+                    ⭐ 찜하기
+                </button>
+            </td>
+        </tr>
+        <tr th:if="${libraries.isEmpty()}">
+            <td colspan="4" sec:authorize="isAnonymous()">데이터를 불러오는 데 실패했거나, API 응답이 없습니다.</td>
+            <td colspan="5" sec:authorize="isAuthenticated()">데이터를 불러오는 데 실패했거나, API 응답이 없습니다.</td>
+        </tr>
+        </tbody>
+    </table>
+
+    <a th:href="@{/}">메인으로 돌아가기</a>
+
+    <script th:inline="javascript">
+        /* <![CDATA[ */
+        const libraryData = /*[[${libraries}]]*/ [];
+        /* ]]> */
+    </script>
+
+    <script>
+        window.onload = function() {
+            const mapContainer = document.getElementById('map');
+            const defaultPosition = new kakao.maps.LatLng(37.2635727, 127.0286009);
+            const mapOption = { center: defaultPosition, level: 10 };
+            const map = new kakao.maps.Map(mapContainer, mapOption);
+            const positions = [];
+
+            // [수정 1] 현재 열린 인포윈도우를 추적할 변수
+            let currentInfoWindow = null;
+
+            libraryData.forEach(lib => {
+                if (lib.latitude && lib.latitude.trim() !== "" && lib.longitude && lib.longitude.trim() !== "") {
+                    const markerPosition = new kakao.maps.LatLng(lib.latitude, lib.longitude);
+                    const marker = new kakao.maps.Marker({ position: markerPosition, title: lib.libraryName });
+                    marker.setMap(map);
+
+                    const detailUrl = `/libraries/detail?address=${encodeURIComponent(lib.address)}` +
+                        `&name=${encodeURIComponent(lib.libraryName)}` +
+                        `&lat=${encodeURIComponent(lib.latitude)}` +
+                        `&lon=${encodeURIComponent(lib.longitude)}`;
+
+                    const content = `
+                        <div class="infowindow-content">
+                            ${lib.libraryName}<br>
+                            <a href="${detailUrl}">상세보기</a>
+                        </div>`;
+
+                    // (인포윈도우 생성)
+                    const infowindow = new kakao.maps.InfoWindow({
+                        content: content,
+                        removable: true // ('X' 버튼)
+                    });
+
+                    // (마커 클릭 이벤트)
+                    kakao.maps.event.addListener(marker, 'click', function() {
+                        // [수정 2] 클릭 시, 이전에 열린 인포윈도우가 있으면 닫기
+                        if (currentInfoWindow) {
+                            currentInfoWindow.close();
+                        }
+                        // 3. 새 인포윈도우 열기
+                        infowindow.open(map, marker);
+                        // 4. 현재 열린 인포윈도우로 참조 업데이트
+                        currentInfoWindow = infowindow;
+                    });
+
+                    positions.push(markerPosition);
+                }
+            });
+
+            // [추가] 5. 지도(map) 자체에 클릭 이벤트를 추가
+            kakao.maps.event.addListener(map, 'click', function() {
+                // 6. 지도를 클릭하면 현재 열린 인포윈도우 닫기
+                if (currentInfoWindow) {
+                    currentInfoWindow.close();
+                    currentInfoWindow = null; // 참조 제거
+                }
+            });
+
+            // (지도 범위 재설정 로직)
+            if (positions.length > 0) {
+                const bounds = new kakao.maps.LatLngBounds();
+                positions.forEach(pos => bounds.extend(pos));
+                map.setBounds(bounds);
+            }
+        };
+    </script>
+
+    <script>
+        function addBookmark(buttonElement) {
+            const token = document.querySelector('meta[name="_csrf"]').content;
+            const header = document.querySelector('meta[name="_csrf_header"]').content;
+
+            const libraryDto = {
+                libraryName: buttonElement.dataset.name,
+                sigunName: buttonElement.dataset.sigun,
+                address: buttonElement.dataset.address,
+                latitude: buttonElement.dataset.lat,
+                longitude: buttonElement.dataset.lon,
+                homepageUrl: buttonElement.dataset.homepage
+            };
+
+            fetch('/api/bookmarks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    [header]: token
+                },
+                body: JSON.stringify(libraryDto)
+            })
+                .then(response => {
+                    if (response.ok) {
+                        alert('찜하기 성공!');
+                        buttonElement.innerText = '✅ 찜 완료';
+                        buttonElement.disabled = true;
+                    } else {
+                        return response.text().then(text => Promise.reject(text));
+                    }
+                })
+                .catch(errorText => {
+                    alert('찜하기 실패: ' + errorText);
+                });
+        }
+    </script>
+</body>
+</html>

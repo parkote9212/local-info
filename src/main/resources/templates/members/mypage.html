@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <title>마이페이지</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+
+    <meta name="_csrf" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:content="${_csrf.headerName}"/>
+</head>
+<body>
+<div th:replace="~{fragments/header :: header}"></div>
+
+<div class="container">
+    <h1>마이페이지</h1>
+    <h3 th:text="|${nickname}님의 관심 도서관 목록|"></h3>
+    <hr>
+
+<div th:if="${bookmarks.isEmpty()}" class="empty">
+    찜한 도서관이 없습니다.
+</div>
+
+<div th:unless="${bookmarks.isEmpty()}">
+    <table>
+        <thead>
+        <tr>
+            <th>시군명</th>
+            <th>도서관명</th>
+            <th>주소</th>
+            <th>홈페이지</th>
+            <th>삭제</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="bookmark : ${bookmarks}">
+            <td th:text="${bookmark.sigunName}">시군명</td>
+            <td th:text="${bookmark.libraryName}">도서관명</td>
+            <td th:text="${bookmark.address}">주소</td>
+            <td>
+                <a th:href="'//'+${bookmark.homepageUrl}" th:text="${bookmark.libraryName} + ' 홈페이지'" target="_blank">홈페이지</a>
+            </td>
+            <td>
+                <button type="button" class="delete-btn"
+                        th:data-id="${bookmark.bookmarkId}"
+                        onclick="deleteBookmark(this)">
+                    삭제
+                </button>
+            </td>
+        </tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    function deleteBookmark(buttonElement) {
+        // 1. (UX) 사용자에게 정말 삭제할 것인지 확인
+        if (!confirm('정말로 이 찜을 삭제하시겠습니까?')) {
+            return; // '취소'를 누르면 함수 종료
+        }
+
+        // 2. CSRF 토큰 읽어오기 (head의 meta 태그에서)
+        const token = document.querySelector('meta[name="_csrf"]').content;
+        const header = document.querySelector('meta[name="_csrf_header"]').content;
+
+        // 3. 버튼의 data-id 속성에서 북마크 ID 읽어오기
+        const bookmarkId = buttonElement.dataset.id;
+
+        // 4. fetch API로 AJAX (DELETE) 요청
+        const url = `/api/bookmarks/${bookmarkId}`; // 예: /api/bookmarks/1
+
+        fetch(url, {
+            method: 'DELETE',
+            headers: {
+                [header]: token // [중요] CSRF 토큰을 헤더에 추가
+            }
+        })
+            .then(response => {
+                // 5. 응답(ResponseEntity) 처리
+                if (response.ok) { // 200 OK
+                    alert('찜 삭제 성공!');
+
+                    // 6. (성공 시) 화면에서 해당 테이블 행(tr)을 즉시 삭제
+                    buttonElement.closest('tr').remove();
+
+                } else {
+                    // 403(권한 없음) 또는 500(서버 오류) 등
+                    return response.text().then(text => Promise.reject(text));
+                }
+            })
+            .catch(errorText => {
+                // 7. 실패 시
+                alert('삭제 실패: ' + errorText);
+            });
+    }
+</script>
+</body>
+</html>
