@@ -49,7 +49,7 @@ public class LibraryController {
      * @param address (필수) 도서관 주소
      * @param name    (필수) 도서관 이름
      * @param model   뷰에 데이터를 전달
-     * @return
+     * @return 뷰반환
      */
     @GetMapping("/detail")
     public String libraryDetail(@RequestParam String address,
