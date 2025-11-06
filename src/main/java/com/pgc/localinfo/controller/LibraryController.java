@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import reactor.core.publisher.Flux;
 
-import java.util.List; // 1. java.util.List 임포트
+import java.util.List;
 
 @Controller
 @RequiredArgsConstructor
@@ -22,6 +22,7 @@ public class LibraryController {
 
     @Value("${kakao.map.app-key}")
     private String kakaoMapAppKey;
+
 
     @GetMapping("")
     public String libraryList(Model model) {
@@ -44,6 +45,7 @@ public class LibraryController {
 
     /**
      * [추가] 도서관 상세 페이지 (GET)
+     *
      * @param address (필수) 도서관 주소
      * @param name    (필수) 도서관 이름
      * @param model   뷰에 데이터를 전달

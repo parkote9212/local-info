@@ -1,4 +1,4 @@
-<<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko" xmlns:th="http://www.thymeleaf.org"
       xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
 <head>
@@ -6,8 +6,7 @@
     <title>경기도 도서관 목록</title>
     <link rel="stylesheet" th:href="@{/css/style.css}">
 
-    <script type="text/javascript"
-            src="//dapi.kakao.com/v2/maps/sdk.js?appkey=[[${kakaoMapAppKey}]]"></script>
+    <script type="text/javascript" th:src="@{//dapi.kakao.com/v2/maps/sdk.js(appkey=${kakaoMapAppKey})}"></script>
     <meta name="_csrf" th:content="${_csrf.token}"/>
     <meta name="_csrf_header" th:content="${_csrf.headerName}"/>
 </head>
@@ -80,14 +79,18 @@
     </script>
 
     <script>
-        window.onload = function() {
+        function initMap() {
+            if (typeof kakao === 'undefined' || !kakao.maps) {
+                setTimeout(initMap, 100);
+                return;
+            }
+            
             const mapContainer = document.getElementById('map');
             const defaultPosition = new kakao.maps.LatLng(37.2635727, 127.0286009);
             const mapOption = { center: defaultPosition, level: 10 };
             const map = new kakao.maps.Map(mapContainer, mapOption);
             const positions = [];
 
-            // [수정 1] 현재 열린 인포윈도우를 추적할 변수
             let currentInfoWindow = null;
 
             libraryData.forEach(lib => {
@@ -107,21 +110,16 @@
                             <a href="${detailUrl}">상세보기</a>
                         </div>`;
 
-                    // (인포윈도우 생성)
                     const infowindow = new kakao.maps.InfoWindow({
                         content: content,
-                        removable: true // ('X' 버튼)
+                        removable: true
                     });
 
-                    // (마커 클릭 이벤트)
                     kakao.maps.event.addListener(marker, 'click', function() {
-                        // [수정 2] 클릭 시, 이전에 열린 인포윈도우가 있으면 닫기
                         if (currentInfoWindow) {
                             currentInfoWindow.close();
                         }
-                        // 3. 새 인포윈도우 열기
                         infowindow.open(map, marker);
-                        // 4. 현재 열린 인포윈도우로 참조 업데이트
                         currentInfoWindow = infowindow;
                     });
 
@@ -129,22 +127,21 @@
                 }
             });
 
-            // [추가] 5. 지도(map) 자체에 클릭 이벤트를 추가
             kakao.maps.event.addListener(map, 'click', function() {
-                // 6. 지도를 클릭하면 현재 열린 인포윈도우 닫기
                 if (currentInfoWindow) {
                     currentInfoWindow.close();
-                    currentInfoWindow = null; // 참조 제거
+                    currentInfoWindow = null;
                 }
             });
 
-            // (지도 범위 재설정 로직)
             if (positions.length > 0) {
                 const bounds = new kakao.maps.LatLngBounds();
                 positions.forEach(pos => bounds.extend(pos));
                 map.setBounds(bounds);
             }
-        };
+        }
+        
+        document.addEventListener('DOMContentLoaded', initMap);
     </script>
 
     <script>
